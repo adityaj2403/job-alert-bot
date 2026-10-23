@@ -2,24 +2,10 @@ import os
 import requests
 from bs4 import BeautifulSoup
 
-# GitHub Secrets se tokens lena
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 URL = "https://www.sarkariresult.com/latestjob/"
-SEEN_JOBS_FILE = "seen_jobs.txt"
-
-
-def load_seen_jobs():
-  if not os.path.exists(SEEN_JOBS_FILE):
-    return set()
-  with open(SEEN_JOBS_FILE, "r", encoding="utf-8") as f:
-    return set(line.strip() for line in f if line.strip())
-
-
-def save_seen_job(job_title):
-  with open(SEEN_JOBS_FILE, "a", encoding="utf-8") as f:
-    f.write(job_title + "\n")
 
 
 def send_telegram_message(text):
@@ -37,8 +23,7 @@ def send_telegram_message(text):
 
 
 def check_for_jobs():
-  print("Checking for ITI / Technical jobs...")
-  seen_jobs = load_seen_jobs()
+  print("Fetching Sarkari Result jobs...")
 
   headers = {
       "User-Agent": (
@@ -51,12 +36,13 @@ def check_for_jobs():
     response.encoding = "utf-8"
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Sabhi links fetch karna
-    post_links = soup.find_all("a")
+    # Pure page se sabhi <a> tags dhundho
+    links = soup.find_all("a")
+    print(f"Total links found on page: {len(links)}")
 
-    new_jobs_found = 0
+    sent_count = 0
 
-    # Extended keywords list taaki koi job na choote
+    # Extended keywords (chote-bade letters dono handle honge)
     keywords = [
         "iti",
         "technician",
@@ -68,35 +54,40 @@ def check_for_jobs():
         "isro",
         "drdo",
         "trade",
-        "loco pilot",
+        "loco",
         "alp",
+        "recruitment",
+        "form",
+        "online",
+        "admit",
+        "apply",
     ]
 
-    for link in post_links:
+    for link in links:
       title = link.get_text().strip()
       href = link.get("href", "")
 
-      if not title or not href.startswith("http"):
+      if not title or len(title) < 5 or not href.startswith("http"):
         continue
 
-      # Title check
+      # Title match check
       if any(kw in title.lower() for kw in keywords):
-        if title not in seen_jobs:
-          message = (
-              f"🚨 *NEW ITI / TECHNICAL JOB ALERT!* 🚨\n\n"
-              f"📌 *Post:* {title}\n\n"
-              f"🔗 [Apply / Details Here]({href})"
-          )
-          send_telegram_message(message)
-          save_seen_job(title)
-          seen_jobs.add(title)
-          new_jobs_found += 1
-          print(f"Sent alert for: {title}")
+        message = (
+            f"🚨 *JOB ALERT!* 🚨\n\n📌 *Post:* {title}\n\n🔗 [Apply Here]({href})"
+        )
+        send_telegram_message(message)
+        print(f"MATCH FOUND & SENT: {title}")
+        sent_count += 1
+        if sent_count >= 5:  # Test ke liye maximum 5 messages bheje
+          break
 
-    if new_jobs_found == 0:
-      print("No new matching jobs found right now.")
-    else:
-      print(f"Found and sent {new_jobs_found} job alerts!")
+    if sent_count == 0:
+      # Agar abhi bhi koi keyword match na ho, toh top 3 jobs test ke liye bhej do
+      send_telegram_message(
+          "ℹ️ *System Test:* Scraper working, but no exact ITI keyword"
+          " match found on front page right now."
+      )
+      print("No exact match found, sent info message.")
 
   except Exception as e:
     print("Error scraping jobs:", e)
@@ -104,7 +95,7 @@ def check_for_jobs():
 
 if __name__ == "__main__":
   if not BOT_TOKEN or not CHAT_ID:
-    print("Error: Secrets are missing!")
+    print("Error: Secrets missing!")
   else:
     check_for_jobs()
-      
+    
